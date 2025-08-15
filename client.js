@@ -27,12 +27,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const gameResultTitle = document.getElementById('game-result-title');
     const ejectionInfo = document.getElementById('ejection-info');
     const playAgainBtn = document.getElementById('play-again-btn');
-    const timerDisplay = document.getElementById('timer-display');
     const ejectionList = document.getElementById('ejection-list');
     const leaveRoomBtn = document.getElementById('leaveRoomBtn');
     const wordForm = document.getElementById('word-form');
     const wordInput = document.getElementById('word-input');
     const wordInputContainer = document.getElementById('word-input-container');
+    const errorModalContainer = document.getElementById('error-modal-container');
 
     let currentRoomCode = '';
     let isHost = false;
@@ -40,6 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let ejectionHistory = [];
     let isMyTurn = false;
     let wordPhase = false;
+    let votingTimer = null;
 
     // --- Eventos de botones y formularios ---
 
@@ -89,7 +90,7 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         const word = wordInput.value.trim();
         if (word && isMyTurn && wordPhase) {
-            const wordCount = word.split(' ').length;
+            const wordCount = word.split(' ').filter(w => w.length > 0).length;
             if (wordCount > 3) {
                 showError('Solo puedes escribir máximo 3 palabras.');
                 return;
@@ -112,7 +113,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (isHost) {
             socket.emit('playAgain', { roomCode: currentRoomCode });
         } else {
-            // Para jugadores no-host, simplemente volver al lobby
             showScreen('lobby');
         }
     });
@@ -161,56 +161,44 @@ document.addEventListener('DOMContentLoaded', () => {
         showScreen('game');
         if (playerData.role === 'impostor') {
             roleInfo.textContent = '¡Eres el IMPOSTOR!';
-            roleInfo.style.background = '#e74c3c';
+            roleInfo.style.background = 'linear-gradient(135deg, #e74c3c, #c0392b)';
         } else {
             roleInfo.innerHTML = `Eres un TRIPULANTE<br><small style="font-size: 18px;">Tu personaje es: ${playerData.characterName}</small>`;
-            roleInfo.style.background = '#27ae60';
+            roleInfo.style.background = 'linear-gradient(135deg, #2ecc71, #27ae60)';
         }
-
-        setTimeout(() => {
-            socket.emit('requestInitialGameState', { roomCode: currentRoomCode });
-        }, 4000);
     });
 
-    socket.on('wordPhaseStart', ({ currentPlayerName, currentPlayerId, wordsSpoken }) => {
-        showScreen('voting');
-        wordPhase = true;
-        isMyTurn = currentPlayerId === socket.id;
-        
-        votingStatusTitle.innerHTML = `<i class="fas fa-comments"></i> Fase de Palabras`;
-        roleInfoText.innerHTML = `
-            <strong>Es el turno de: ${currentPlayerName}</strong><br>
-            ${isMyTurn ? '¡Es tu turno! Usa el campo de abajo para escribir.' : 'Espera tu turno para hablar.'}
-        `;
+    socket.on('wordPhaseStart', ({ myRole, currentPlayerName, currentPlayerId, wordsSpoken }) => {
+        setTimeout(() => {
+            showScreen('voting');
+            wordPhase = true;
+            isMyTurn = currentPlayerId === socket.id;
+            
+            votingStatusTitle.innerHTML = `<i class="fas fa-comments"></i> Fase de Palabras`;
+            
+            let roleText = `Tu rol: <strong>${myRole.role === 'impostor' ? 'Impostor' : 'Tripulante'}</strong>`;
+            if (myRole.characterName) roleText += ` | Tu personaje: <strong>${myRole.characterName}</strong>`;
+            roleInfoText.innerHTML = roleText;
 
-        // Mostrar u ocultar el campo de entrada de palabras
-        wordInputContainer.style.display = isMyTurn ? 'block' : 'none';
-        if (isMyTurn) {
-            setTimeout(() => wordInput.focus(), 100);
-        }
+            const turnInfo = document.getElementById('timer-container');
+            turnInfo.innerHTML = `<h4 style="color: #f1c40f; margin: 0;">Es el turno de: <strong style="color: #fff;">${currentPlayerName}</strong></h4>`;
 
-        // Mostrar palabras ya dichas
-        updateWordHistory(wordsSpoken);
-        
-        // Limpiar lista de votación
-        votingList.innerHTML = '';
-        
-        // Ocultar timer
-        document.getElementById('timer-container').style.display = 'none';
+            wordInputContainer.style.display = isMyTurn ? 'block' : 'none';
+            if (isMyTurn) setTimeout(() => wordInput.focus(), 100);
+
+            updateWordHistory(wordsSpoken);
+            votingList.innerHTML = '';
+        }, 4000);
     });
 
     socket.on('nextPlayerTurn', ({ currentPlayerName, currentPlayerId, wordsSpoken }) => {
         isMyTurn = currentPlayerId === socket.id;
-        roleInfoText.innerHTML = `
-            <strong>Es el turno de: ${currentPlayerName}</strong><br>
-            ${isMyTurn ? '¡Es tu turno! Usa el campo de abajo para escribir.' : 'Espera tu turno para hablar.'}
-        `;
         
-        // Mostrar u ocultar el campo de entrada de palabras
+        const turnInfo = document.getElementById('timer-container');
+        turnInfo.innerHTML = `<h4 style="color: #f1c40f; margin: 0;">Es el turno de: <strong style="color: #fff;">${currentPlayerName}</strong></h4>`;
+        
         wordInputContainer.style.display = isMyTurn ? 'block' : 'none';
-        if (isMyTurn) {
-            setTimeout(() => wordInput.focus(), 100);
-        }
+        if (isMyTurn) setTimeout(() => wordInput.focus(), 100);
         
         updateWordHistory(wordsSpoken);
     });
@@ -224,17 +212,13 @@ document.addEventListener('DOMContentLoaded', () => {
         votingStatusTitle.innerHTML = `<i class="fas fa-vote-yea"></i> ¡Ahora vota por el Impostor!`;
 
         const amIAlive = gameState.players.find(p => p.id === socket.id)?.isAlive;
-        const iHaveVoted = !!gameState.votes[socket.id];
 
-        let roleText = `Tu rol: ${myPlayerData.role === 'impostor' ? 'Impostor' : 'Tripulante'}`;
-        if (myPlayerData.characterName) roleText += ` | Tu personaje: ${myPlayerData.characterName}`;
+        let roleText = `Tu rol: <strong>${myPlayerData.role === 'impostor' ? 'Impostor' : 'Tripulante'}</strong>`;
+        if (myPlayerData.characterName) roleText += ` | Tu personaje: <strong>${myPlayerData.characterName}</strong>`;
         if (!amIAlive) roleText = 'Has sido expulsado. Eres un espectador.';
-        roleInfoText.textContent = roleText;
+        roleInfoText.innerHTML = roleText;
 
-        // Actualizar historial de expulsiones
         updateEjectionHistory();
-        
-        // Mostrar palabras dichas durante esta ronda
         updateWordHistory(gameState.wordsSpoken);
 
         gameState.players.forEach(player => {
@@ -243,36 +227,41 @@ document.addEventListener('DOMContentLoaded', () => {
 
             li.innerHTML = `<span>${player.name}</span> <span class="vote-count">${voteCount}</span>`;
             if (player.isAlive) li.dataset.id = player.id;
-
             if (!player.isAlive) li.classList.add('ejected');
-
-            if (!amIAlive || iHaveVoted) {
-                li.style.pointerEvents = 'none';
-            }
+            if (!amIAlive || !!gameState.votes[socket.id]) li.style.pointerEvents = 'none';
+            
             votingList.appendChild(li);
         });
     });
 
     socket.on('voteUpdate', (gameState) => {
-        const iHaveVoted = !!gameState.votes[socket.id];
-        if (iHaveVoted) {
+        const amIAlive = gameState.players.find(p => p.id === socket.id)?.isAlive;
+        if (!!gameState.votes[socket.id] && amIAlive) {
             votingStatusTitle.textContent = 'Voto emitido. Esperando a los demás...';
         }
 
-        // Actualizar conteos de votos
-        gameState.players.forEach((player, index) => {
-            const li = votingList.children[index];
+        gameState.players.forEach(player => {
+            const li = document.querySelector(`#voting-list li[data-id="${player.id}"]`);
             if (li) {
                 const voteCount = gameState.voteCounts[player.id] || 0;
-                li.innerHTML = `<span>${player.name}</span> <span class="vote-count">${voteCount}</span>`;
+                const voteCountSpan = li.querySelector('.vote-count');
+                if (voteCountSpan) voteCountSpan.textContent = voteCount;
             }
         });
     });
 
+    socket.on('timerUpdate', ({ timeRemaining }) => {
+        const timerContainer = document.getElementById('timer-container');
+        timerContainer.style.display = 'block';
+        timerContainer.innerHTML = `<div id="timer-display">${timeRemaining}</div>`;
+    });
+
+    socket.on('timeUp', () => {
+        votingStatusTitle.textContent = '¡Se acabó el tiempo!';
+    });
+
     socket.on('roundResult', ({ message, ejectedPlayer, wasImpostor }) => {
         roundResultText.textContent = message;
-        
-        // Agregar al historial de expulsiones si hay un jugador expulsado
         if (ejectedPlayer) {
             ejectionHistory.push({
                 name: ejectedPlayer.name,
@@ -280,19 +269,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 round: ejectionHistory.length + 1
             });
         }
-        
-        // Limpiar timer
         if (votingTimer) {
             clearInterval(votingTimer);
             votingTimer = null;
         }
-        
         setTimeout(() => {
             roundResultText.textContent = '';
         }, 4000);
     });
-
-    // Eventos de timer eliminados - ahora usamos sistema de turnos
 
     socket.on('gameOver', ({ ejectedPlayerName, wasImpostor, impostorName, winner }) => {
         showScreen('gameOver');
@@ -302,26 +286,23 @@ document.addEventListener('DOMContentLoaded', () => {
             gameResultTitle.textContent = '🏆 ¡Los Tripulantes Ganan!';
             gameResultTitle.style.color = '#27ae60';
             ejectionInfo.textContent = `${ejectedPlayerName} fue expulsado. ¡Era el Impostor!`;
-            impostorReveal.innerHTML = `<strong style="color: #e74c3c;">🕵️ El Impostor era: ${impostorName}</strong>`;
         } else {
             gameResultTitle.textContent = '🏆 ¡El Impostor Gana!';
             gameResultTitle.style.color = '#e74c3c';
             ejectionInfo.textContent = `${ejectedPlayerName} fue expulsado. No era el Impostor.`;
-            impostorReveal.innerHTML = `<strong style="color: #e74c3c;">🕵️ El Impostor era: ${impostorName}</strong><br><small style="color: #95a5a6;">¡Logró sobrevivir hasta el final!</small>`;
         }
+        impostorReveal.innerHTML = `<strong style="color: #e74c3c;">🕵️ El Impostor era: ${impostorName}</strong>`;
         
-        // Mostrar botón para todos los jugadores
         playAgainBtn.style.display = 'inline-block';
         playAgainBtn.textContent = isHost ? 'Iniciar Nueva Partida' : 'Volver al Lobby';
     });
 
     socket.on('returnToLobby', () => {
         playAgainBtn.style.display = 'none';
-        messagesContainer.innerHTML = ''; // Limpiar el chat
-        ejectionHistory = []; // Limpiar historial
+        messagesContainer.innerHTML = '';
+        ejectionHistory = [];
         wordPhase = false;
         isMyTurn = false;
-        document.getElementById('timer-container').style.display = 'block';
         showScreen('lobby');
     });
 
@@ -340,25 +321,17 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function showError(message) {
-        // Crear el modal de error
-        const errorModal = document.createElement('div');
-        errorModal.classList.add('error-modal');
-        errorModal.innerHTML = `<i class="fas fa-exclamation-triangle"></i> ${message}`;
+        errorModalContainer.querySelector('.error-modal').innerHTML = `<i class="fas fa-exclamation-triangle"></i> ${message}`;
+        errorModalContainer.style.display = 'flex';
         
-        // Agregar al body
-        document.body.appendChild(errorModal);
-        
-        // Remover después de 3 segundos
         setTimeout(() => {
-            if (document.body.contains(errorModal)) {
-                document.body.removeChild(errorModal);
-            }
+            errorModalContainer.style.display = 'none';
         }, 3000);
     }
 
     function updateWordHistory(wordsSpoken) {
         const timerContainer = document.getElementById('timer-container');
-        if (wordsSpoken.length > 0) {
+        if (wordsSpoken && wordsSpoken.length > 0) {
             timerContainer.innerHTML = `
                 <h4 style="color: #f1c40f; margin: 0 0 10px 0;"><i class="fas fa-list"></i> Palabras dichas:</h4>
                 <div style="color: #ecf0f1; font-size: 16px; line-height: 1.6;">
@@ -366,9 +339,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             `;
         } else {
-            timerContainer.innerHTML = `
-                <h4 style="color: #f1c40f; margin: 0;"><i class="fas fa-hourglass-start"></i> Esperando palabras...</h4>
-            `;
+            // Se gestiona por el evento de turno
         }
         timerContainer.style.display = 'block';
     }
