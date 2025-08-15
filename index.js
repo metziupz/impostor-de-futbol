@@ -61,7 +61,10 @@ io.on('connection', (socket) => {
             votes: {},
             impostorId: null,
             votingTimer: null,
-            timeRemaining: VOTING_TIME_LIMIT
+            timeRemaining: VOTING_TIME_LIMIT,
+            currentTurnIndex: 0,
+            wordsSpoken: [],
+            wordPhaseComplete: false
         };
 
         socket.emit('roomCreated', { roomCode });
@@ -101,7 +104,51 @@ io.on('connection', (socket) => {
 
         const sender = room.players.find(player => player.id === socket.id);
         if (sender) {
-            io.to(roomCode).emit('newMessage', { senderName: sender.name, message: message });
+            // Check if it's the word phase and if the sender is the current player
+            if (room.gameState === 'wordPhase') {
+                const currentPlayer = room.players.filter(p => p.isAlive)[room.currentTurnIndex];
+                if (socket.id !== currentPlayer.id) {
+                    return socket.emit('error', 'No es tu turno para hablar.');
+                }
+                if (message.split(' ').length > 3) {
+                    return socket.emit('error', 'Solo puedes decir máximo 3 palabras.');
+                }
+                if (room.wordsSpoken.some(w => w.senderId === socket.id)) {
+                    return socket.emit('error', 'Ya has dicho tu palabra.');
+                }
+
+                room.wordsSpoken.push({ senderId: socket.id, message: message });
+                
+                // Check if all players have spoken
+                if (room.wordsSpoken.length === room.players.filter(p => p.isAlive).length) {
+                    room.wordPhaseComplete = true;
+                    room.gameState = 'voting';
+                    room.votes = {};
+                    room.timeRemaining = VOTING_TIME_LIMIT;
+                    io.to(roomCode).emit('wordPhaseComplete', { wordsSpoken: room.wordsSpoken });
+                    setTimeout(() => {
+                        startVotingTimer(roomCode);
+                        io.to(roomCode).emit('gameUpdate', { 
+                            players: room.players, 
+                            votes: room.votes, 
+                            voteCounts: {},
+                            timeRemaining: room.timeRemaining
+                        });
+                    }, 2000);
+
+                } else {
+                    // Move to the next player
+                    room.currentTurnIndex = (room.currentTurnIndex + 1) % room.players.filter(p => p.isAlive).length;
+                    const nextPlayer = room.players.filter(p => p.isAlive)[room.currentTurnIndex];
+                    io.to(roomCode).emit('wordPhaseStart', { 
+                        currentPlayerName: nextPlayer.name,
+                        currentPlayerId: nextPlayer.id,
+                        wordsSpoken: room.wordsSpoken
+                    });
+                }
+            } else {
+                io.to(roomCode).emit('newMessage', { senderName: sender.name, message: message });
+            }
         }
     });
 
@@ -130,8 +177,9 @@ io.on('connection', (socket) => {
         const room = rooms[roomCode];
         if (!room || socket.id !== room.hostId || room.players.length < 3) return;
 
-        room.gameState = 'voting';
+        room.gameState = 'wordPhase'; // Changed from 'voting' to 'wordPhase'
         room.votes = {};
+        room.impostorId = null;
         room.players.forEach(p => p.isAlive = true);
 
         const characterForCrewmates = characterNames[Math.floor(Math.random() * characterNames.length)];
@@ -145,18 +193,39 @@ io.on('connection', (socket) => {
             };
             io.to(player.id).emit('assignRole', roleData);
         });
+
+        // Start the word phase
+        room.currentTurnIndex = Math.floor(Math.random() * room.players.length);
+        room.wordsSpoken = [];
+        room.wordPhaseComplete = false;
+        const currentPlayer = room.players[room.currentTurnIndex];
+        io.to(roomCode).emit('wordPhaseStart', { 
+            currentPlayerName: currentPlayer.name,
+            currentPlayerId: currentPlayer.id,
+            wordsSpoken: room.wordsSpoken
+        });
     });
 
     socket.on('requestInitialGameState', ({ roomCode }) => {
         const room = rooms[roomCode];
         if (room) {
-            startVotingTimer(roomCode);
-            io.to(roomCode).emit('gameUpdate', { 
-                players: room.players, 
-                votes: room.votes, 
-                voteCounts: {},
-                timeRemaining: room.timeRemaining
-            });
+            // If in word phase, emit the current state
+            if (room.gameState === 'wordPhase') {
+                const currentPlayer = room.players.filter(p => p.isAlive)[room.currentTurnIndex];
+                io.to(roomCode).emit('wordPhaseStart', { 
+                    currentPlayerName: currentPlayer.name,
+                    currentPlayerId: currentPlayer.id,
+                    wordsSpoken: room.wordsSpoken
+                });
+            } else if (room.gameState === 'voting') {
+                startVotingTimer(roomCode);
+                io.to(roomCode).emit('gameUpdate', { 
+                    players: room.players, 
+                    votes: room.votes, 
+                    voteCounts: {},
+                    timeRemaining: room.timeRemaining
+                });
+            }
         }
     });
 
@@ -185,6 +254,7 @@ io.on('connection', (socket) => {
         const livingPlayers = room.players.filter(p => p.isAlive).length;
         if (Object.keys(room.votes).length === livingPlayers) {
             clearInterval(room.votingTimer);
+            room.votingTimer = null;
             setTimeout(() => tallyVotes(roomCode), 2000);
         }
     });
@@ -202,6 +272,10 @@ io.on('connection', (socket) => {
             room.votingTimer = null;
         }
         room.timeRemaining = VOTING_TIME_LIMIT;
+        room.currentTurnIndex = 0;
+        room.wordsSpoken = [];
+        room.wordPhaseComplete = false;
+
 
         io.to(roomCode).emit('returnToLobby');
         io.to(roomCode).emit('updatePlayerList', { players: room.players, hostId: room.hostId });
@@ -228,6 +302,28 @@ io.on('connection', (socket) => {
                             io.to(roomCode).emit('gameOver', { winner: 'impostor', ejectedPlayerName: 'Nadie', wasImpostor: false, impostorName: impostor ? impostor.name : 'Desconocido' });
                         } else if (Object.keys(room.votes).length === livingPlayers) {
                             tallyVotes(roomCode);
+                        }
+                    } else if (room.gameState === 'wordPhase') {
+                        // If the current player disconnects, pass turn to next
+                        if (room.players.filter(p => p.isAlive).length > 0 && room.currentTurnIndex >= room.players.filter(p => p.isAlive).length) {
+                             room.currentTurnIndex = 0; // Reset if the last player disconnected
+                        }
+                        const alivePlayersCount = room.players.filter(p => p.isAlive).length;
+                        if (alivePlayersCount < 1) {
+                             delete rooms[roomCode];
+                             return;
+                        }
+                        // Ensure current turn is still valid after player removal
+                        if (room.currentTurnIndex >= alivePlayersCount) {
+                            room.currentTurnIndex = alivePlayersCount - 1;
+                        }
+                        const nextPlayer = room.players.filter(p => p.isAlive)[room.currentTurnIndex];
+                        if (nextPlayer) {
+                            io.to(roomCode).emit('wordPhaseStart', {
+                                currentPlayerName: nextPlayer.name,
+                                currentPlayerId: nextPlayer.id,
+                                wordsSpoken: room.wordsSpoken
+                            });
                         }
                     }
                     io.to(roomCode).emit('updatePlayerList', { players: room.players, hostId: room.hostId });
@@ -261,25 +357,34 @@ function tallyVotes(roomCode) {
 
     if (idsWithMaxVotes.length > 1) { // Empate
         io.to(roomCode).emit('roundResult', { 
-            message: '¡Empate! Nadie fue expulsado. Votando de nuevo...',
+            message: '¡Empate! Nadie fue expulsado. Iniciando ronda de palabras...',
             ejectedPlayer: null,
             wasImpostor: false
         });
         room.votes = {};
         room.timeRemaining = VOTING_TIME_LIMIT;
+        // Restart with word phase
         setTimeout(() => {
-            startVotingTimer(roomCode);
-            io.to(roomCode).emit('gameUpdate', { 
-                players: room.players, 
-                votes: room.votes, 
-                voteCounts: {},
-                timeRemaining: room.timeRemaining
+            // Nueva ronda de palabras
+            room.gameState = 'wordPhase';
+            const alivePlayers = room.players.filter(p => p.isAlive);
+            room.currentTurnIndex = Math.floor(Math.random() * alivePlayers.length);
+            room.wordsSpoken = [];
+            room.wordPhaseComplete = false;
+
+            const currentPlayer = alivePlayers[room.currentTurnIndex];
+            io.to(roomCode).emit('wordPhaseStart', { 
+                currentPlayerName: currentPlayer.name,
+                currentPlayerId: currentPlayer.id,
+                wordsSpoken: room.wordsSpoken
             });
         }, 4000);
         return;
     }
 
     const ejectedPlayer = room.players.find(p => p.id === ejectedPlayerId);
+    if (!ejectedPlayer) return; // Should not happen, but safety check
+
     ejectedPlayer.isAlive = false;
 
     const wasImpostor = ejectedPlayer.id === room.impostorId;
@@ -293,20 +398,27 @@ function tallyVotes(roomCode) {
 
     if (wasImpostor) {
         room.gameState = 'gameOver';
-        io.to(roomCode).emit('gameOver', { winner: 'crewmates', ejectedPlayerName: ejectedPlayer.name, wasImpostor: true, impostorName: impostor.name });
+        io.to(roomCode).emit('gameOver', { winner: 'crewmates', ejectedPlayerName: ejectedPlayer.name, wasImpostor: true, impostorName: impostor ? impostor.name : 'Desconocido' });
     } else if (livingPlayers.length <= 2) {
         room.gameState = 'gameOver';
-        io.to(roomCode).emit('gameOver', { winner: 'impostor', ejectedPlayerName: ejectedPlayer.name, wasImpostor: false, impostorName: impostor.name });
+        io.to(roomCode).emit('gameOver', { winner: 'impostor', ejectedPlayerName: ejectedPlayer.name, wasImpostor: false, impostorName: impostor ? impostor.name : 'Desconocido' });
     } else {
         room.votes = {};
         room.timeRemaining = VOTING_TIME_LIMIT;
+        // Restart with word phase
         setTimeout(() => {
-            startVotingTimer(roomCode);
-            io.to(roomCode).emit('gameUpdate', { 
-                players: room.players, 
-                votes: room.votes, 
-                voteCounts: {},
-                timeRemaining: room.timeRemaining
+            // Nueva ronda de palabras
+            room.gameState = 'wordPhase';
+            const alivePlayers = room.players.filter(p => p.isAlive);
+            room.currentTurnIndex = Math.floor(Math.random() * alivePlayers.length);
+            room.wordsSpoken = [];
+            room.wordPhaseComplete = false;
+
+            const currentPlayer = alivePlayers[room.currentTurnIndex];
+            io.to(roomCode).emit('wordPhaseStart', { 
+                currentPlayerName: currentPlayer.name,
+                currentPlayerId: currentPlayer.id,
+                wordsSpoken: room.wordsSpoken
             });
         }, 4000);
     }
@@ -315,20 +427,20 @@ function tallyVotes(roomCode) {
 function startVotingTimer(roomCode) {
     const room = rooms[roomCode];
     if (!room || room.votingTimer) return;
-    
+
     room.timeRemaining = VOTING_TIME_LIMIT;
-    
+
     room.votingTimer = setInterval(() => {
         room.timeRemaining--;
-        
+
         // Enviar actualización del timer a todos los clientes
         io.to(roomCode).emit('timerUpdate', { timeRemaining: room.timeRemaining });
-        
+
         if (room.timeRemaining <= 0) {
             clearInterval(room.votingTimer);
             room.votingTimer = null;
             io.to(roomCode).emit('timeUp');
-            
+
             // Proceder con la votación aunque no todos hayan votado
             setTimeout(() => tallyVotes(roomCode), 2000);
         }
