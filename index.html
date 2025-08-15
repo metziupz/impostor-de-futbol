@@ -556,9 +556,14 @@
         <div class="card">
             <h2 id="voting-status-title"><i class="fas fa-vote-yea"></i> Vota por el Impostor</h2>
             <div id="timer-container">
-                <span style="color: #f1c40f; font-size: 1.5em; font-weight: bold;"><i class="fas fa-clock"></i> Tiempo restante: </span>
-                <span id="timer-display" style="color: #e74c3c; font-size: 1.8em; font-weight: bold;">90</span>
-                <span style="color: #f1c40f; font-size: 1.5em; font-weight: bold;">s</span>
+                <h4 style="color: #f1c40f; margin: 0;"><i class="fas fa-hourglass-start"></i> Esperando palabras...</h4>
+            </div>
+            <div id="word-input-container" style="display: none; margin: 20px 0; text-align: center;">
+                <form id="word-form">
+                    <input type="text" id="word-input" placeholder="Escribe tu palabra (máximo 3 palabras)..." style="width: 300px; margin-right: 10px;">
+                    <button type="submit" style="background: linear-gradient(135deg, #00b894, #00a085);"><i class="fas fa-paper-plane"></i> Enviar</button>
+                </form>
+                <small style="color: #ddd; display: block; margin-top: 5px;">Máximo 3 palabras permitidas</small>
             </div>
             <p id="role-info-text"></p>
             <div id="ejection-history">
@@ -586,4 +591,3 @@
 
 </body>
 </html>
-
