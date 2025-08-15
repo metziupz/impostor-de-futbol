@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Juego del Impostor v2</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; background: #2c3e50; color: #ecf0f1; padding-top: 50px; }
+        .screen { display: none; }
+        .screen.active { display: block; }
+        h1, h2 { color: #e74c3c; }
+        input { padding: 10px; margin: 10px; border-radius: 5px; border: none; width: 200px; text-align: center; text-transform: uppercase; }
+        button { padding: 10px 20px; background: #e74c3c; color: white; border: none; border-radius: 5px; cursor: pointer; margin: 5px; }
+        button:hover { background: #c0392b; }
+        #playerList { list-style: none; padding: 0; }
+        #playerList li { background: #34495e; margin: 5px auto; padding: 10px; border-radius: 5px; width: 200px; }
+        #roleInfo, #roomCodeDisplay { font-size: 24px; padding: 20px; background: #3498db; border-radius: 10px; display: inline-block; margin-top: 20px; letter-spacing: 3px; }
+        .error { color: #e74c3c; font-weight: bold; height: 20px; }
+        small { color: #bdc3c7; }
+    </style>
+</head>
+<body>
+
+    <h1>Juego del Impostor</h1>
+    <div class="error" id="error-message"></div>
+
+    <div id="menu-screen" class="screen active">
+        <h2>Bienvenido</h2>
+        <input type="text" id="playerNameInput" placeholder="Escribe tu nombre..." maxlength="12"><br>
+        <button id="createRoomBtn">Crear Sala</button>
+        <hr style="width:300px; border-color:#34495e;">
+        <input type="text" id="roomCodeInput" placeholder="Pega el código de la sala..." maxlength="5">
+        <button id="joinRoomBtn">Unirse a Sala</button>
+    </div>
+
+    <div id="lobby-screen" class="screen">
+        <h2>Sala de Espera</h2>
+        <p>Comparte este código con tus amigos:</p>
+        <div id="roomCodeDisplay"></div>
+        <h3>Jugadores Conectados:</h3>
+        <ul id="playerList"></ul>
+        <button id="startGameBtn">¡Empezar Partida!</button>
+    </div>
+
+    <div id="game-screen" class="screen">
+        <h2>Tu rol ha sido asignado:</h2>
+        <div id="roleInfo"></div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="client.js"></script>
+
+</body>
+</html>
