@@ -1,13 +1,15 @@
 document.addEventListener('DOMContentLoaded', () => {
     const socket = io();
 
-    // Selectores de todas las pantallas y elementos
+    // --- Selectores de Elementos ---
     const screens = {
         menu: document.getElementById('menu-screen'),
         lobby: document.getElementById('lobby-screen'),
         game: document.getElementById('game-screen'),
         voting: document.getElementById('voting-screen'),
-        gameOver: document.getElementById('game-over-screen')
+        gameOver: document.getElementById('game-over-screen'),
+        offlineSetup: document.getElementById('offline-setup-screen'),
+        offlineReveal: document.getElementById('offline-reveal-screen')
     };
     const playerNameInput = document.getElementById('playerNameInput');
     const createRoomBtn = document.getElementById('createRoomBtn');
@@ -33,17 +35,66 @@ document.addEventListener('DOMContentLoaded', () => {
     const wordInput = document.getElementById('word-input');
     const wordInputContainer = document.getElementById('word-input-container');
     const errorModalContainer = document.getElementById('error-modal-container');
+    
+    // Selectores para Opciones Online
+    const optionsBtn = document.getElementById('optionsBtn');
+    const optionsModal = document.getElementById('options-modal');
+    const saveOptionsBtn = document.getElementById('save-options-btn');
+    const closeOptionsBtn = document.getElementById('close-options-btn');
+    const onlineGameModeSelect = document.getElementById('online-game-mode-select');
+    const impostorCountSelector = document.querySelector('.impostor-count-selector');
+    const playerRequirementNotice = document.getElementById('player-requirement-notice');
+    const votingTimeSelector = document.querySelector('.voting-time-selector');
+    const onlineCluesOptionGroup = document.getElementById('online-clues-option-group');
+    const cluesEnabledCheckbox = document.getElementById('clues-enabled-checkbox');
+    const clueProbabilityGroup = document.getElementById('clue-probability-group');
+    const clueProbabilitySlider = document.getElementById('clue-probability-slider');
+    const probabilityValue = document.getElementById('probability-value');
+    const onlineConfusedOptionGroup = document.getElementById('online-confused-option-group');
+    const confusedCrewmateSlider = document.getElementById('confused-crewmate-slider');
+    const confusedCrewmateValue = document.getElementById('confused-crewmate-value');
+    const gameOptionsDisplay = document.getElementById('game-options-display');
+
+    // --- Selectores para MODO PRESENCIAL ---
+    const offlineModeBtn = document.getElementById('offlineModeBtn');
+    const backToMenuBtn = document.getElementById('backToMenuBtn');
+    const offlinePlayerCountSelect = document.getElementById('offlinePlayerCount');
+    const offlinePlayerNamesContainer = document.getElementById('offline-player-names-container');
+    const startOfflineGameBtn = document.getElementById('startOfflineGameBtn');
+    const offlinePassDeviceDiv = document.getElementById('offline-pass-device');
+    const offlinePlayerNameTurn = document.getElementById('offline-player-name-turn');
+    const offlineShowRoleBtn = document.getElementById('offline-show-role-btn');
+    const offlineRoleRevealDiv = document.getElementById('offline-role-reveal');
+    const offlineCountdown = document.getElementById('offline-countdown');
+    const offlineRoleContent = document.getElementById('offline-role-content');
+    const offlinePlayerNameReveal = document.getElementById('offline-player-name-reveal');
+    const offlineRoleInfo = document.getElementById('offline-role-info');
+    const offlineHideRoleBtn = document.getElementById('offline-hide-role-btn');
+    // Selectores para Opciones Offline
+    const offlineGameModeSelect = document.getElementById('offline-game-mode-select');
+    const offlineImpostorCountSelector = document.getElementById('offline-impostor-count-selector');
+    const offlinePlayerRequirementNotice = document.getElementById('offline-player-requirement-notice');
+    const offlineCluesOptionGroup = document.getElementById('offline-clues-option-group');
+    const offlineCluesEnabledCheckbox = document.getElementById('offline-clues-enabled-checkbox');
+    const offlineClueProbabilityGroup = document.getElementById('offline-clue-probability-group');
+    const offlineClueProbabilitySlider = document.getElementById('offline-clue-probability-slider');
+    const offlineProbabilityValue = document.getElementById('offline-probability-value');
+    const offlineConfusedOptionGroup = document.getElementById('offline-confused-option-group');
+    const offlineConfusedCrewmateSlider = document.getElementById('offline-confused-crewmate-slider');
+    const offlineConfusedCrewmateValue = document.getElementById('offline-confused-crewmate-value');
 
     let currentRoomCode = '';
     let isHost = false;
     let myPlayerData = {};
+    let localGameOptions = { gameMode: 'playersAndClubs', impostorCount: 1, votingTime: 90, cluesEnabled: false, clueProbability: 5, confusedCrewmateProbability: 0 };
+    let localOfflineGameOptions = { gameMode: 'playersAndClubs', impostorCount: 1, cluesEnabled: false, clueProbability: 5, confusedCrewmateProbability: 0 };
+    let playerCount = 0;
     let ejectionHistory = [];
     let isMyTurn = false;
     let wordPhase = false;
-    let votingTimer = null;
+    let offlineGame = {};
 
-    // --- Eventos de botones y formularios ---
-
+    // --- Eventos de Botones y Formularios (Modo Online) ---
     createRoomBtn.addEventListener('click', () => {
         const playerName = playerNameInput.value;
         if (!playerName) return showError('Debes introducir un nombre.');
@@ -81,8 +132,7 @@ document.addEventListener('DOMContentLoaded', () => {
     leaveRoomBtn.addEventListener('click', () => {
         if (confirm('¿Estás seguro de que quieres salir de la sala?')) {
             socket.emit('leaveRoom', { roomCode: currentRoomCode });
-            currentRoomCode = '';
-            showScreen('menu');
+            window.location.reload();
         }
     });
 
@@ -112,40 +162,166 @@ document.addEventListener('DOMContentLoaded', () => {
     playAgainBtn.addEventListener('click', () => {
         if (isHost) {
             socket.emit('playAgain', { roomCode: currentRoomCode });
-        } else {
-            showScreen('lobby');
         }
     });
 
-    // --- RECEPCIÓN DE EVENTOS DEL SERVIDOR ---
+    // --- Lógica del Modal de Opciones (Online) ---
+    optionsBtn.addEventListener('click', () => optionsModal.style.display = 'flex');
+    closeOptionsBtn.addEventListener('click', () => optionsModal.style.display = 'none');
+    saveOptionsBtn.addEventListener('click', () => {
+        socket.emit('updateGameOptions', { roomCode: currentRoomCode, options: localGameOptions });
+        optionsModal.style.display = 'none';
+    });
+    
+    onlineGameModeSelect.addEventListener('change', () => {
+        localGameOptions.gameMode = onlineGameModeSelect.value;
+        updateOptionsUI();
+    });
 
+    function setupVotingTimeButtons() {
+        votingTimeSelector.innerHTML = '';
+        [60, 90, 120, 150].forEach(time => {
+            const btn = document.createElement('button');
+            btn.textContent = `${time}s`;
+            btn.dataset.time = time;
+            votingTimeSelector.appendChild(btn);
+        });
+    }
+
+    votingTimeSelector.addEventListener('click', (e) => {
+        if (e.target.tagName === 'BUTTON') {
+            localGameOptions.votingTime = parseInt(e.target.dataset.time, 10);
+            updateOptionsUI();
+        }
+    });
+    
+    function setupImpostorButtons(maxImpostors) {
+        impostorCountSelector.innerHTML = '';
+        for (let i = 1; i <= maxImpostors; i++) {
+            const btn = document.createElement('button');
+            btn.textContent = i;
+            btn.dataset.count = i;
+            impostorCountSelector.appendChild(btn);
+        }
+    }
+
+    impostorCountSelector.addEventListener('click', (e) => {
+        if (e.target.tagName === 'BUTTON') {
+            localGameOptions.impostorCount = parseInt(e.target.dataset.count, 10);
+            updateOptionsUI();
+        }
+    });
+
+    cluesEnabledCheckbox.addEventListener('change', () => {
+        localGameOptions.cluesEnabled = cluesEnabledCheckbox.checked;
+        updateOptionsUI();
+    });
+
+    clueProbabilitySlider.addEventListener('input', () => {
+        const value = clueProbabilitySlider.value;
+        localGameOptions.clueProbability = parseInt(value, 10);
+        probabilityValue.textContent = `${value}%`;
+    });
+
+    confusedCrewmateSlider.addEventListener('input', () => {
+        const value = parseInt(confusedCrewmateSlider.value, 10);
+        localGameOptions.confusedCrewmateProbability = value;
+        confusedCrewmateValue.textContent = value === 0 ? '0% (Desactivado)' : `${value}%`;
+    });
+
+    function updateOptionsUI() {
+        onlineGameModeSelect.value = localGameOptions.gameMode;
+        
+        impostorCountSelector.querySelectorAll('button').forEach(btn => {
+            btn.classList.toggle('active', parseInt(btn.dataset.count) === localGameOptions.impostorCount);
+        });
+        
+        votingTimeSelector.querySelectorAll('button').forEach(btn => {
+            btn.classList.toggle('active', parseInt(btn.dataset.time) === localGameOptions.votingTime);
+        });
+
+        let requiredPlayers = 3;
+        if (localGameOptions.impostorCount === 2) requiredPlayers = 7;
+        if (localGameOptions.impostorCount === 3) requiredPlayers = 9;
+
+        if (playerCount < requiredPlayers) {
+            playerRequirementNotice.textContent = `Se necesitan ${requiredPlayers} jugadores para ${localGameOptions.impostorCount} impostor(es).`;
+            playerRequirementNotice.style.display = 'block';
+        } else {
+            playerRequirementNotice.style.display = 'none';
+        }
+
+        if (isHost) {
+            startGameBtn.disabled = playerCount < requiredPlayers;
+        }
+
+        const isClubsOnly = localGameOptions.gameMode === 'clubsOnly';
+        if(isClubsOnly) {
+            onlineCluesOptionGroup.setAttribute('disabled', true);
+            onlineConfusedOptionGroup.setAttribute('disabled', true);
+        } else {
+            onlineCluesOptionGroup.removeAttribute('disabled');
+            onlineConfusedOptionGroup.removeAttribute('disabled');
+        }
+
+        cluesEnabledCheckbox.checked = localGameOptions.cluesEnabled;
+        clueProbabilityGroup.style.display = localGameOptions.cluesEnabled ? 'block' : 'none';
+        clueProbabilitySlider.value = localGameOptions.clueProbability;
+        probabilityValue.textContent = `${localGameOptions.clueProbability}%`;
+
+        const confValue = localGameOptions.confusedCrewmateProbability;
+        confusedCrewmateSlider.value = confValue;
+        confusedCrewmateValue.textContent = confValue === 0 ? '0% (Desactivado)' : `${confValue}%`;
+    }
+
+    // --- RECEPCIÓN DE EVENTOS DEL SERVIDOR (Modo Online) ---
     socket.on('roomCreated', ({ roomCode }) => {
         currentRoomCode = roomCode;
         roomCodeDisplay.textContent = roomCode;
+        setupVotingTimeButtons();
         showScreen('lobby');
     });
 
     socket.on('joinedLobby', ({ roomCode }) => {
         currentRoomCode = roomCode;
         roomCodeDisplay.textContent = roomCode;
+        setupVotingTimeButtons();
         showScreen('lobby');
     });
 
     socket.on('updatePlayerList', ({ players, hostId }) => {
+        playerCount = players.length;
         isHost = socket.id === hostId;
+        
         startGameBtn.style.display = isHost ? 'inline-block' : 'none';
+        optionsBtn.style.display = isHost ? 'inline-block' : 'none';
+
+        let maxImpostors = 1;
+        if (playerCount >= 9) maxImpostors = 3;
+        else if (playerCount >= 7) maxImpostors = 2;
+        
+        setupImpostorButtons(maxImpostors);
+        if (localGameOptions.impostorCount > maxImpostors) {
+            localGameOptions.impostorCount = maxImpostors;
+            if(isHost) {
+                 socket.emit('updateGameOptions', { roomCode: currentRoomCode, options: localGameOptions });
+            }
+        }
+        updateOptionsUI();
+        
         playerList.innerHTML = '';
         players.forEach(player => {
             const li = document.createElement('li');
-            let content = '';
-            if (player.id === hostId) content += '👑 ';
-            content += player.name;
-            if (isHost && player.id !== socket.id) {
-                content += `<button class="kick-btn" data-id="${player.id}">X</button>`;
-            }
-            li.innerHTML = content;
+            li.innerHTML = `${player.id === hostId ? '👑 ' : ''}${player.name}${isHost && player.id !== socket.id ? `<button class="kick-btn" data-id="${player.id}">X</button>` : ''}`;
             playerList.appendChild(li);
         });
+    });
+
+    socket.on('gameOptionsUpdated', (options) => {
+        localGameOptions = options;
+        updateOptionsUI();
+        const modeText = options.gameMode === 'clubsOnly' ? 'Solo Clubes' : 'Jugadores + Clubes';
+        gameOptionsDisplay.textContent = `Impostores: ${options.impostorCount} | Modo: ${modeText}`;
     });
 
     socket.on('newMessage', ({ senderName, message }) => {
@@ -158,17 +334,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     socket.on('assignRole', (playerData) => {
         myPlayerData = playerData;
+        ejectionHistory = [];
         showScreen('game');
-        if (playerData.role === 'impostor') {
-            roleInfo.textContent = '¡Eres el IMPOSTOR!';
-            roleInfo.style.background = 'linear-gradient(135deg, #e74c3c, #c0392b)';
-        } else {
-            roleInfo.innerHTML = `Eres un TRIPULANTE<br><small style="font-size: 18px;">Tu personaje es: ${playerData.characterName}</small>`;
-            roleInfo.style.background = 'linear-gradient(135deg, #2ecc71, #27ae60)';
+        
+        let roleHTML = `Eres un ${playerData.role === 'impostor' ? '<strong>IMPOSTOR</strong>' : '<strong>TRIPULANTE</strong>'}`;
+        if (playerData.characterName) {
+            roleHTML += `<br><small style="font-size: 18px;">Tu personaje es: ${playerData.characterName}</small>`;
         }
+        if (playerData.role === 'impostor' && playerData.clue) {
+            roleHTML += `<br><small style="font-size: 18px; color: var(--color-warning);">Pista: ${playerData.clue}</small>`;
+        }
+        roleInfo.innerHTML = roleHTML;
     });
 
-    socket.on('wordPhaseStart', ({ myRole, currentPlayerName, currentPlayerId, wordsSpoken }) => {
+    socket.on('wordPhaseStart', ({ currentPlayerName, currentPlayerId, wordsSpoken }) => {
         setTimeout(() => {
             showScreen('voting');
             wordPhase = true;
@@ -176,8 +355,13 @@ document.addEventListener('DOMContentLoaded', () => {
             
             votingStatusTitle.innerHTML = `<i class="fas fa-comments"></i> Fase de Palabras`;
             
-            let roleText = `Tu rol: <strong>${myRole.role === 'impostor' ? 'Impostor' : 'Tripulante'}</strong>`;
-            if (myRole.characterName) roleText += ` | Tu personaje: <strong>${myRole.characterName}</strong>`;
+            let roleText = `Tu rol: <strong>${myPlayerData.role === 'impostor' ? 'Impostor' : 'Tripulante'}</strong>`;
+            if (myPlayerData.role === 'crewmate' && myPlayerData.characterName) {
+                 roleText += ` | Tu personaje: <strong>${myPlayerData.characterName}</strong>`;
+            }
+            if (myPlayerData.role === 'impostor' && myPlayerData.clue) {
+                roleText += ` <span style="color: var(--color-warning); font-style: italic;">(Pista: ${myPlayerData.clue})</span>`;
+            }
             roleInfoText.innerHTML = roleText;
 
             const turnInfo = document.getElementById('timer-container');
@@ -214,8 +398,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const amIAlive = gameState.players.find(p => p.id === socket.id)?.isAlive;
 
         let roleText = `Tu rol: <strong>${myPlayerData.role === 'impostor' ? 'Impostor' : 'Tripulante'}</strong>`;
-        if (myPlayerData.characterName) roleText += ` | Tu personaje: <strong>${myPlayerData.characterName}</strong>`;
-        if (!amIAlive) roleText = 'Has sido expulsado. Eres un espectador.';
+        if (myPlayerData.role === 'crewmate' && myPlayerData.characterName) {
+            roleText += ` | Tu personaje: <strong>${myPlayerData.characterName}</strong>`;
+        }
+        if (myPlayerData.role === 'impostor' && myPlayerData.clue) {
+            roleText += ` <span style="color: var(--color-warning); font-style: italic;">(Pista: ${myPlayerData.clue})</span>`;
+        }
+        if (!amIAlive) {
+            roleText = 'Has sido expulsado. Eres un espectador.';
+        }
         roleInfoText.innerHTML = roleText;
 
         updateEjectionHistory();
@@ -226,7 +417,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const voteCount = gameState.voteCounts[player.id] || 0;
 
             li.innerHTML = `<span>${player.name}</span> <span class="vote-count">${voteCount}</span>`;
-            if (player.isAlive) li.dataset.id = player.id;
+            if (player.isAlive && amIAlive) li.dataset.id = player.id;
             if (!player.isAlive) li.classList.add('ejected');
             if (!amIAlive || !!gameState.votes[socket.id]) li.style.pointerEvents = 'none';
             
@@ -234,18 +425,12 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    socket.on('voteUpdate', (gameState) => {
-        const amIAlive = gameState.players.find(p => p.id === socket.id)?.isAlive;
-        if (!!gameState.votes[socket.id] && amIAlive) {
-            votingStatusTitle.textContent = 'Voto emitido. Esperando a los demás...';
-        }
-
-        gameState.players.forEach(player => {
-            const li = document.querySelector(`#voting-list li[data-id="${player.id}"]`);
-            if (li) {
-                const voteCount = gameState.voteCounts[player.id] || 0;
-                const voteCountSpan = li.querySelector('.vote-count');
-                if (voteCountSpan) voteCountSpan.textContent = voteCount;
+    socket.on('voteUpdate', ({ voteCounts }) => {
+        votingList.querySelectorAll('li').forEach(li => {
+            const voteCountSpan = li.querySelector('.vote-count');
+            const playerId = li.dataset.id;
+            if (voteCountSpan) {
+                voteCountSpan.textContent = voteCounts[playerId] || 0;
             }
         });
     });
@@ -269,52 +454,271 @@ document.addEventListener('DOMContentLoaded', () => {
                 round: ejectionHistory.length + 1
             });
         }
-        if (votingTimer) {
-            clearInterval(votingTimer);
-            votingTimer = null;
-        }
         setTimeout(() => {
             roundResultText.textContent = '';
         }, 4000);
     });
 
-    socket.on('gameOver', ({ ejectedPlayerName, wasImpostor, impostorName, winner }) => {
+    socket.on('gameOver', ({ ejectedPlayerName, impostorName, winner }) => {
         showScreen('gameOver');
         const impostorReveal = document.getElementById('impostor-reveal');
         
         if (winner === 'crewmates') {
             gameResultTitle.textContent = '🏆 ¡Los Tripulantes Ganan!';
-            gameResultTitle.style.color = '#27ae60';
-            ejectionInfo.textContent = `${ejectedPlayerName} fue expulsado. ¡Era el Impostor!`;
+            ejectionInfo.textContent = ejectedPlayerName ? `${ejectedPlayerName} fue expulsado. ¡Era el último Impostor!` : `¡Todos los impostores fueron descubiertos!`;
         } else {
-            gameResultTitle.textContent = '🏆 ¡El Impostor Gana!';
-            gameResultTitle.style.color = '#e74c3c';
-            ejectionInfo.textContent = `${ejectedPlayerName} fue expulsado. No era el Impostor.`;
+            gameResultTitle.textContent = '🏆 ¡Los Impostores Ganan!';
+            if(ejectedPlayerName) {
+                ejectionInfo.textContent = `${ejectedPlayerName} fue expulsado, pero no era el único Impostor.`;
+            } else {
+                 ejectionInfo.textContent = 'Los tripulantes no lograron descubrir a los impostores.';
+            }
         }
-        impostorReveal.innerHTML = `<strong style="color: #e74c3c;">🕵️ El Impostor era: ${impostorName}</strong>`;
+        impostorReveal.innerHTML = `<strong style="color: #e74c3c;">🕵️ El/Los Impostor(es) era(n): ${impostorName}</strong>`;
         
         playAgainBtn.style.display = 'inline-block';
-        playAgainBtn.textContent = isHost ? 'Iniciar Nueva Partida' : 'Volver al Lobby';
+        playAgainBtn.textContent = isHost ? 'Iniciar Nueva Partida' : 'Esperando al Host...';
     });
 
     socket.on('returnToLobby', () => {
         playAgainBtn.style.display = 'none';
         messagesContainer.innerHTML = '';
         ejectionHistory = [];
-        wordPhase = false;
-        isMyTurn = false;
         showScreen('lobby');
     });
 
     socket.on('youWereKicked', () => {
         alert('El host te ha expulsado de la sala.');
-        currentRoomCode = '';
-        showScreen('menu');
+        window.location.reload();
     });
 
     socket.on('error', (message) => showError(message));
 
-    // --- Funciones auxiliares ---
+    // --- LÓGICA PARA MODO PRESENCIAL ---
+    
+    offlineModeBtn.addEventListener('click', () => {
+        showScreen('offlineSetup');
+        offlineModeBtn.style.display = 'none';
+        generatePlayerNameInputs(parseInt(offlinePlayerCountSelect.value, 10));
+        updateOfflineOptionsUI();
+    });
+
+    backToMenuBtn.addEventListener('click', () => {
+        showScreen('menu');
+        offlineModeBtn.style.display = 'block';
+    });
+
+    offlinePlayerCountSelect.addEventListener('change', () => {
+        const count = parseInt(offlinePlayerCountSelect.value, 10);
+        generatePlayerNameInputs(count);
+        updateOfflineOptionsUI();
+    });
+    
+    offlineGameModeSelect.addEventListener('change', () => {
+        localOfflineGameOptions.gameMode = offlineGameModeSelect.value;
+        updateOfflineOptionsUI();
+    });
+
+    function generatePlayerNameInputs(count) {
+        offlinePlayerNamesContainer.innerHTML = '<h4>Nombres de los Jugadores:</h4>';
+        for (let i = 1; i <= count; i++) {
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.placeholder = `Nombre Jugador ${i}`;
+            input.className = 'offline-player-name-input';
+            input.style.maxWidth = '300px';
+            input.style.margin = '5px auto';
+            input.style.display = 'block';
+            offlinePlayerNamesContainer.appendChild(input);
+        }
+    }
+
+    function setupOfflineImpostorButtons(maxImpostors) {
+        offlineImpostorCountSelector.innerHTML = '';
+        for (let i = 1; i <= maxImpostors; i++) {
+            const btn = document.createElement('button');
+            btn.textContent = i;
+            btn.dataset.count = i;
+            offlineImpostorCountSelector.appendChild(btn);
+        }
+    }
+
+    offlineImpostorCountSelector.addEventListener('click', (e) => {
+        if (e.target.tagName === 'BUTTON') {
+            localOfflineGameOptions.impostorCount = parseInt(e.target.dataset.count, 10);
+            updateOfflineOptionsUI();
+        }
+    });
+
+    offlineCluesEnabledCheckbox.addEventListener('change', () => {
+        localOfflineGameOptions.cluesEnabled = offlineCluesEnabledCheckbox.checked;
+        updateOfflineOptionsUI();
+    });
+
+    offlineClueProbabilitySlider.addEventListener('input', () => {
+        const value = offlineClueProbabilitySlider.value;
+        localOfflineGameOptions.clueProbability = parseInt(value, 10);
+        offlineProbabilityValue.textContent = `${value}%`;
+    });
+
+    offlineConfusedCrewmateSlider.addEventListener('input', () => {
+        const value = parseInt(offlineConfusedCrewmateSlider.value, 10);
+        localOfflineGameOptions.confusedCrewmateProbability = value;
+        offlineConfusedCrewmateValue.textContent = value === 0 ? '0% (Desactivado)' : `${value}%`;
+    });
+
+    function updateOfflineOptionsUI() {
+        offlineGameModeSelect.value = localOfflineGameOptions.gameMode;
+        const currentOfflinePlayerCount = parseInt(offlinePlayerCountSelect.value, 10);
+        
+        let maxImpostors = 1;
+        if (currentOfflinePlayerCount >= 9) maxImpostors = 3;
+        else if (currentOfflinePlayerCount >= 7) maxImpostors = 2;
+        
+        setupOfflineImpostorButtons(maxImpostors);
+        if (localOfflineGameOptions.impostorCount > maxImpostors) {
+            localOfflineGameOptions.impostorCount = maxImpostors;
+        }
+
+        offlineImpostorCountSelector.querySelectorAll('button').forEach(btn => {
+            btn.classList.toggle('active', parseInt(btn.dataset.count) === localOfflineGameOptions.impostorCount);
+        });
+
+        let requiredPlayers = 3;
+        if (localOfflineGameOptions.impostorCount === 2) requiredPlayers = 7;
+        if (localOfflineGameOptions.impostorCount === 3) requiredPlayers = 9;
+
+        if (currentOfflinePlayerCount < requiredPlayers) {
+            offlinePlayerRequirementNotice.textContent = `Se necesitan ${requiredPlayers} jugadores para ${localOfflineGameOptions.impostorCount} impostor(es).`;
+            offlinePlayerRequirementNotice.style.display = 'block';
+            startOfflineGameBtn.disabled = true;
+        } else {
+            offlinePlayerRequirementNotice.style.display = 'none';
+            startOfflineGameBtn.disabled = false;
+        }
+        
+        const isClubsOnly = localOfflineGameOptions.gameMode === 'clubsOnly';
+        if(isClubsOnly) {
+            offlineCluesOptionGroup.setAttribute('disabled', true);
+            offlineConfusedOptionGroup.setAttribute('disabled', true);
+        } else {
+            offlineCluesOptionGroup.removeAttribute('disabled');
+            offlineConfusedOptionGroup.removeAttribute('disabled');
+        }
+
+        offlineCluesEnabledCheckbox.checked = localOfflineGameOptions.cluesEnabled;
+        offlineClueProbabilityGroup.style.display = localOfflineGameOptions.cluesEnabled ? 'block' : 'none';
+        offlineClueProbabilitySlider.value = localOfflineGameOptions.clueProbability;
+        offlineProbabilityValue.textContent = `${localOfflineGameOptions.clueProbability}%`;
+
+        const confValue = localOfflineGameOptions.confusedCrewmateProbability;
+        offlineConfusedCrewmateSlider.value = confValue;
+        offlineConfusedCrewmateValue.textContent = confValue === 0 ? '0% (Desactivado)' : `${confValue}%`;
+    }
+
+    startOfflineGameBtn.addEventListener('click', () => {
+        const playerCount = parseInt(offlinePlayerCountSelect.value, 10);
+        const nameInputs = document.querySelectorAll('.offline-player-name-input');
+        const playerNames = [];
+        let allNamesFilled = true;
+        
+        nameInputs.forEach((input, index) => {
+            const name = input.value.trim();
+            if (name === '') {
+                allNamesFilled = false;
+            }
+            playerNames.push(name || `Jugador ${index + 1}`);
+        });
+        
+        if (!allNamesFilled) {
+            if (!confirm('Algunos nombres están vacíos. ¿Quieres continuar con nombres por defecto?')) {
+                return;
+            }
+        }
+        
+        socket.emit('getOfflineGameData', { 
+            playerCount, 
+            playerNames, 
+            options: localOfflineGameOptions 
+        });
+    });
+
+    socket.on('offlineGameDataReady', (data) => {
+        offlineGame = {
+            ...data,
+            currentPlayerIndex: 0
+        };
+        showScreen('offlineReveal');
+        setupOfflineRevealForPlayer(0);
+    });
+
+    offlineShowRoleBtn.addEventListener('click', () => {
+        offlinePassDeviceDiv.style.display = 'none';
+        offlineRoleRevealDiv.style.display = 'block';
+        startOfflineCountdown();
+    });
+
+    offlineHideRoleBtn.addEventListener('click', () => {
+        offlineGame.currentPlayerIndex++;
+        if (offlineGame.currentPlayerIndex < offlineGame.players.length) {
+            setupOfflineRevealForPlayer(offlineGame.currentPlayerIndex);
+        } else {
+            alert('Todos los roles han sido asignados. ¡Que comience el juego!');
+            showScreen('menu');
+            offlineModeBtn.style.display = 'block';
+        }
+    });
+
+    function setupOfflineRevealForPlayer(index) {
+        offlinePassDeviceDiv.style.display = 'block';
+        offlineRoleRevealDiv.style.display = 'none';
+        offlineRoleContent.style.display = 'none';
+        offlineCountdown.style.display = 'block';
+        
+        offlinePlayerNameTurn.textContent = offlineGame.players[index].name;
+    }
+
+    let countdownTimer;
+    function startOfflineCountdown() {
+        let count = 5;
+        offlineCountdown.textContent = count;
+        if(countdownTimer) clearInterval(countdownTimer);
+        
+        countdownTimer = setInterval(() => {
+            count--;
+            if (count > 0) {
+                offlineCountdown.textContent = count;
+            } else {
+                clearInterval(countdownTimer);
+                offlineCountdown.style.display = 'none';
+                displayOfflineRole();
+                offlineRoleContent.style.display = 'block';
+            }
+        }, 1000);
+    }
+
+    function displayOfflineRole() {
+        const playerIndex = offlineGame.currentPlayerIndex;
+        const playerData = offlineGame.players[playerIndex];
+        
+        offlinePlayerNameReveal.textContent = playerData.name;
+        
+        let roleHTML = `Eres un ${playerData.role === 'impostor' ? '<strong style="color: var(--color-danger);">IMPOSTOR</strong>' : '<strong style="color: var(--accent-primary);">TRIPULANTE</strong>'}`;
+        
+        if (playerData.characterName) {
+            roleHTML += `<br><small style="font-size: 18px;">El personaje es: ${playerData.characterName}</small>`;
+        } else {
+            roleHTML += `<br><small style="font-size: 18px;">¡No sabes quién es el personaje!</small>`;
+        }
+
+        if (playerData.role === 'impostor' && playerData.clue) {
+            roleHTML += `<br><small style="font-size: 18px; color: var(--color-warning);">Pista: ${playerData.clue}</small>`;
+        }
+
+        offlineRoleInfo.innerHTML = roleHTML;
+    }
+
+    // --- Funciones auxiliares y de inicialización ---
     function showScreen(screenName) {
         Object.values(screens).forEach(s => s.classList.remove('active'));
         if (screens[screenName]) screens[screenName].classList.add('active');
@@ -330,28 +734,35 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updateWordHistory(wordsSpoken) {
-        const timerContainer = document.getElementById('timer-container');
+        const wordHistoryContainer = document.getElementById('ejection-history');
+        const wordHistoryList = document.getElementById('ejection-list');
+        const wordHistoryTitle = wordHistoryContainer.querySelector('h4');
+
+        wordHistoryTitle.innerHTML = `<i class="fas fa-comments"></i> Palabras Dichas:`;
+
         if (wordsSpoken && wordsSpoken.length > 0) {
-            timerContainer.innerHTML = `
-                <h4 style="color: #f1c40f; margin: 0 0 10px 0;"><i class="fas fa-list"></i> Palabras dichas:</h4>
-                <div style="color: #ecf0f1; font-size: 16px; line-height: 1.6;">
-                    ${wordsSpoken.map(word => `<span style="background: rgba(116, 185, 255, 0.2); padding: 5px 10px; margin: 3px; border-radius: 10px; display: inline-block;"><strong>${word.playerName}:</strong> "${word.word}"</span>`).join('')}
-                </div>
-            `;
+            wordHistoryList.innerHTML = wordsSpoken.map(word => 
+                `<div style="margin: 4px 0;"><strong>${word.playerName}:</strong> "${word.word}"</div>`
+            ).join('');
         } else {
-            // Se gestiona por el evento de turno
+            wordHistoryList.innerHTML = '<em>Nadie ha dicho su palabra aún...</em>';
         }
-        timerContainer.style.display = 'block';
     }
 
     function updateEjectionHistory() {
+        const ejectionHistoryContainer = document.getElementById('ejection-history');
+        const ejectionHistoryList = document.getElementById('ejection-list');
+        const ejectionHistoryTitle = ejectionHistoryContainer.querySelector('h4');
+
+        ejectionHistoryTitle.innerHTML = `<i class="fas fa-user-slash"></i> Historial de Expulsiones`;
+
         if (ejectionHistory.length === 0) {
-            ejectionList.innerHTML = '<em>Ninguna expulsión aún...</em>';
+            ejectionHistoryList.innerHTML = '<em>Ninguna expulsión aún...</em>';
         } else {
-            ejectionList.innerHTML = ejectionHistory.map(ejection => {
+            ejectionHistoryList.innerHTML = ejectionHistory.map(ejection => {
                 const status = ejection.wasImpostor ? 
-                    '<span style="color: #e74c3c;">❌ Era el Impostor</span>' : 
-                    '<span style="color: #95a5a6;">✓ No era el Impostor</span>';
+                    '<span style="color: #e74c3c;">❌ Era Impostor</span>' : 
+                    '<span style="color: #95a5a6;">✓ No era Impostor</span>';
                 return `<div style="margin: 3px 0;">Ronda ${ejection.round}: <strong>${ejection.name}</strong> - ${status}</div>`;
             }).join('');
         }
