@@ -355,6 +355,16 @@ function generateRoomCode() {
     return code;
 }
 
+function getDataSource(gameMode) {
+    if (gameMode === 'playersOnly') {
+        return characterData;
+    } else if (gameMode === 'clubsOnly') {
+        return clubData;
+    } else { // playersAndClubs or default
+        return [...characterData, ...clubData];
+    }
+}
+
 function startWordPhase(roomCode) {
     const room = rooms[roomCode];
     if (!room) return;
@@ -453,6 +463,7 @@ io.on('connection', (socket) => {
             votes: {},
             impostorIds: [],
             options: {
+                gameMode: 'playersOnly',
                 impostorCount: 1,
                 votingTime: 90,
                 cluesEnabled: false,
@@ -493,7 +504,7 @@ io.on('connection', (socket) => {
         const room = rooms[roomCode];
         if (!room || socket.id !== room.hostId) return;
 
-        const { impostorCount } = room.options;
+        const { impostorCount, gameMode } = room.options;
         const playerCount = room.players.length;
 
         if (impostorCount === 2 && playerCount < 7) return socket.emit('error', 'Se necesitan al menos 7 jugadores para 2 impostores.');
@@ -505,9 +516,9 @@ io.on('connection', (socket) => {
         let confusedCrewmateId = null;
         let fakeCharacterName = null;
 
-        const secretCharacterObject = characterData[Math.floor(Math.random() * characterData.length)];
+        const sourceData = getDataSource(gameMode);
+        const secretCharacterObject = sourceData[Math.floor(Math.random() * sourceData.length)];
         room.secretCharacter = secretCharacterObject;
-        const characterForCrewmates = secretCharacterObject.name;
 
         const playersCopy = [...room.players];
         for (let i = 0; i < impostorCount; i++) {
@@ -517,18 +528,15 @@ io.on('connection', (socket) => {
         }
         
         const crewmates = room.players.filter(p => !room.impostorIds.includes(p.id));
-        if (room.options.confusedCrewmateProbability > 0 && crewmates.length > 0) {
+        if (room.options.confusedCrewmateProbability > 0 && crewmates.length > 0 && secretCharacterObject.type === 'Player') {
             if (Math.random() < (room.options.confusedCrewmateProbability / 100)) {
-                
                 const potentialFakes = characterData.filter(char => 
                     char.name !== secretCharacterObject.name &&
                     (char.club === secretCharacterObject.club || char.team === secretCharacterObject.team || char.position === secretCharacterObject.position)
                 );
-
                 if (potentialFakes.length > 0) {
                     const fakeCharacter = potentialFakes[Math.floor(Math.random() * potentialFakes.length)];
                     fakeCharacterName = fakeCharacter.name;
-
                     const confusedCrewmate = crewmates[Math.floor(Math.random() * crewmates.length)];
                     confusedCrewmateId = confusedCrewmate.id;
                 }
@@ -539,41 +547,40 @@ io.on('connection', (socket) => {
             const isImpostor = room.impostorIds.includes(player.id);
             const isConfused = player.id === confusedCrewmateId;
             let impostorClue = null;
-            let finalCharacterName = characterForCrewmates;
+            let finalCharacterName = secretCharacterObject.name;
 
             if (isImpostor) {
                 finalCharacterName = undefined;
-                if (room.options.cluesEnabled && Math.random() < (room.options.clueProbability / 100)) {
-                    const clues = [secretCharacterObject.club, secretCharacterObject.team, secretCharacterObject.position];
+                if (room.options.cluesEnabled && gameMode !== 'clubsOnly' && Math.random() < (room.options.clueProbability / 100)) {
+                    const clues = secretCharacterObject.type === 'Player' 
+                        ? [secretCharacterObject.club, secretCharacterObject.team, secretCharacterObject.position]
+                        : [secretCharacterObject.country];
                     impostorClue = clues[Math.floor(Math.random() * clues.length)];
                 }
             } else if (isConfused) {
                 finalCharacterName = fakeCharacterName;
             }
 
-            const roleData = {
+            io.to(player.id).emit('assignRole', {
                 role: isImpostor ? 'impostor' : 'crewmate',
                 characterName: finalCharacterName,
                 clue: impostorClue
-            };
-            io.to(player.id).emit('assignRole', roleData);
+            });
         });
 
         startWordPhase(roomCode);
     });
     
-    // --- MANEJADOR ACTUALIZADO PARA MODO PRESENCIAL ---
     socket.on('getOfflineGameData', ({ playerCount, playerNames, options }) => {
-        if (!playerCount || !playerNames || !options || playerCount < 3) {
-            return; // No hacer nada si los datos no son válidos
-        }
-        const { impostorCount, cluesEnabled, clueProbability, confusedCrewmateProbability } = options;
+        if (!playerCount || !playerNames || !options || playerCount < 3) return;
 
-        const secretCharacterObject = characterData[Math.floor(Math.random() * characterData.length)];
+        const { gameMode, impostorCount, cluesEnabled, clueProbability, confusedCrewmateProbability } = options;
+        
+        const sourceData = getDataSource(gameMode);
+        const secretCharacterObject = sourceData[Math.floor(Math.random() * sourceData.length)];
         let fakeCharacterName = null;
-        let confusedCrewmateIndex = -1; // Usamos -1 para indicar que no hay ninguno
+        let confusedCrewmateIndex = -1;
 
-        // Asignar impostores por índice
         const allPlayerIndexes = Array.from({ length: playerCount }, (_, i) => i);
         const impostorIndexes = new Set();
         for (let i = 0; i < impostorCount; i++) {
@@ -582,9 +589,8 @@ io.on('connection', (socket) => {
             impostorIndexes.add(impostorIndex);
         }
 
-        // Lógica del Tripulante Confundido
         const crewmateIndexes = Array.from({ length: playerCount }, (_, i) => i).filter(i => !impostorIndexes.has(i));
-        if (confusedCrewmateProbability > 0 && crewmateIndexes.length > 0) {
+        if (confusedCrewmateProbability > 0 && crewmateIndexes.length > 0 && secretCharacterObject.type === 'Player') {
             if (Math.random() < (confusedCrewmateProbability / 100)) {
                 const potentialFakes = characterData.filter(char => 
                     char.name !== secretCharacterObject.name &&
@@ -607,8 +613,10 @@ io.on('connection', (socket) => {
 
             if (isImpostor) {
                 finalCharacterName = null;
-                if (cluesEnabled && Math.random() < (clueProbability / 100)) {
-                    const clues = [secretCharacterObject.club, secretCharacterObject.team, secretCharacterObject.position];
+                if (cluesEnabled && gameMode !== 'clubsOnly' && Math.random() < (clueProbability / 100)) {
+                     const clues = secretCharacterObject.type === 'Player' 
+                        ? [secretCharacterObject.club, secretCharacterObject.team, secretCharacterObject.position]
+                        : [secretCharacterObject.country];
                     impostorClue = clues[Math.floor(Math.random() * clues.length)];
                 }
             } else if (isConfused) {
