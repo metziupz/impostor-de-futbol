@@ -86,8 +86,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentRoomCode = '';
     let isHost = false;
     let myPlayerData = {};
-    let localGameOptions = { gameMode: 'playersAndClubs', impostorCount: 1, votingTime: 90, cluesEnabled: false, clueProbability: 5, confusedCrewmateProbability: 0 };
-    let localOfflineGameOptions = { gameMode: 'playersAndClubs', impostorCount: 1, cluesEnabled: false, clueProbability: 5, confusedCrewmateProbability: 0 };
+    let localGameOptions = { gameMode: 'playersOnly', impostorCount: 1, votingTime: 90, cluesEnabled: false, clueProbability: 5, confusedCrewmateProbability: 0 };
+    let localOfflineGameOptions = { gameMode: 'playersOnly', impostorCount: 1, cluesEnabled: false, clueProbability: 5, confusedCrewmateProbability: 0 };
     let playerCount = 0;
     let ejectionHistory = [];
     let isMyTurn = false;
@@ -257,15 +257,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const isClubsOnly = localGameOptions.gameMode === 'clubsOnly';
         if(isClubsOnly) {
-            onlineCluesOptionGroup.setAttribute('disabled', true);
-            onlineConfusedOptionGroup.setAttribute('disabled', true);
+            onlineCluesOptionGroup.setAttribute('disabled', 'true');
+            onlineConfusedOptionGroup.setAttribute('disabled', 'true');
         } else {
             onlineCluesOptionGroup.removeAttribute('disabled');
             onlineConfusedOptionGroup.removeAttribute('disabled');
         }
 
         cluesEnabledCheckbox.checked = localGameOptions.cluesEnabled;
-        clueProbabilityGroup.style.display = localGameOptions.cluesEnabled ? 'block' : 'none';
+        clueProbabilityGroup.style.display = localGameOptions.cluesEnabled && !isClubsOnly ? 'block' : 'none';
         clueProbabilitySlider.value = localGameOptions.clueProbability;
         probabilityValue.textContent = `${localGameOptions.clueProbability}%`;
 
@@ -320,7 +320,10 @@ document.addEventListener('DOMContentLoaded', () => {
     socket.on('gameOptionsUpdated', (options) => {
         localGameOptions = options;
         updateOptionsUI();
-        const modeText = options.gameMode === 'clubsOnly' ? 'Solo Clubes' : 'Jugadores + Clubes';
+        let modeText = 'Jugadores + Clubes';
+        if(options.gameMode === 'playersOnly') modeText = 'Solo Jugadores';
+        if(options.gameMode === 'clubsOnly') modeText = 'Solo Clubes';
+        
         gameOptionsDisplay.textContent = `Impostores: ${options.impostorCount} | Modo: ${modeText}`;
     });
 
@@ -339,7 +342,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         let roleHTML = `Eres un ${playerData.role === 'impostor' ? '<strong>IMPOSTOR</strong>' : '<strong>TRIPULANTE</strong>'}`;
         if (playerData.characterName) {
-            roleHTML += `<br><small style="font-size: 18px;">Tu personaje es: ${playerData.characterName}</small>`;
+            roleHTML += `<br><small style="font-size: 18px;">El personaje es: ${playerData.characterName}</small>`;
         }
         if (playerData.role === 'impostor' && playerData.clue) {
             roleHTML += `<br><small style="font-size: 18px; color: var(--color-warning);">Pista: ${playerData.clue}</small>`;
@@ -357,7 +360,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             let roleText = `Tu rol: <strong>${myPlayerData.role === 'impostor' ? 'Impostor' : 'Tripulante'}</strong>`;
             if (myPlayerData.role === 'crewmate' && myPlayerData.characterName) {
-                 roleText += ` | Tu personaje: <strong>${myPlayerData.characterName}</strong>`;
+                 roleText += ` | El personaje: <strong>${myPlayerData.characterName}</strong>`;
             }
             if (myPlayerData.role === 'impostor' && myPlayerData.clue) {
                 roleText += ` <span style="color: var(--color-warning); font-style: italic;">(Pista: ${myPlayerData.clue})</span>`;
@@ -399,7 +402,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let roleText = `Tu rol: <strong>${myPlayerData.role === 'impostor' ? 'Impostor' : 'Tripulante'}</strong>`;
         if (myPlayerData.role === 'crewmate' && myPlayerData.characterName) {
-            roleText += ` | Tu personaje: <strong>${myPlayerData.characterName}</strong>`;
+            roleText += ` | El personaje: <strong>${myPlayerData.characterName}</strong>`;
         }
         if (myPlayerData.role === 'impostor' && myPlayerData.clue) {
             roleText += ` <span style="color: var(--color-warning); font-style: italic;">(Pista: ${myPlayerData.clue})</span>`;
@@ -599,15 +602,15 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const isClubsOnly = localOfflineGameOptions.gameMode === 'clubsOnly';
         if(isClubsOnly) {
-            offlineCluesOptionGroup.setAttribute('disabled', true);
-            offlineConfusedOptionGroup.setAttribute('disabled', true);
+            offlineCluesOptionGroup.setAttribute('disabled', 'true');
+            offlineConfusedOptionGroup.setAttribute('disabled', 'true');
         } else {
             offlineCluesOptionGroup.removeAttribute('disabled');
             offlineConfusedOptionGroup.removeAttribute('disabled');
         }
 
         offlineCluesEnabledCheckbox.checked = localOfflineGameOptions.cluesEnabled;
-        offlineClueProbabilityGroup.style.display = localOfflineGameOptions.cluesEnabled ? 'block' : 'none';
+        offlineClueProbabilityGroup.style.display = localOfflineGameOptions.cluesEnabled && !isClubsOnly ? 'block' : 'none';
         offlineClueProbabilitySlider.value = localOfflineGameOptions.clueProbability;
         offlineProbabilityValue.textContent = `${localOfflineGameOptions.clueProbability}%`;
 
