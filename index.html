@@ -280,6 +280,8 @@
             width: 90%;
             max-width: 500px;
             box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+            max-height: 85vh;
+            overflow-y: auto;
         }
 
         .option-group {
@@ -381,6 +383,12 @@
             top: 20px;
             left: 20px;
             z-index: 100;
+        }
+
+        #offline-setup-screen .card {
+            max-height: 85vh;
+            overflow-y: auto;
+            padding-right: 15px;
         }
 
         .countdown-large {
@@ -491,6 +499,7 @@
             <div class="option-group">
                 <label>Modo de Juego</label>
                 <select id="online-game-mode-select" style="width: 100%;">
+                    <option value="playersOnly">Solo Jugadores</option>
                     <option value="playersAndClubs">Jugadores + Clubes</option>
                     <option value="clubsOnly">Solo Clubes</option>
                 </select>
@@ -567,6 +576,7 @@
              <div class="option-group">
                 <label>Modo de Juego</label>
                 <select id="offline-game-mode-select" style="max-width: 300px; margin: 0 auto;">
+                    <option value="playersOnly">Solo Jugadores</option>
                     <option value="playersAndClubs">Jugadores + Clubes</option>
                     <option value="clubsOnly">Solo Clubes</option>
                 </select>
