@@ -94,6 +94,21 @@ document.addEventListener('DOMContentLoaded', () => {
     let wordPhase = false;
     let offlineGame = {};
 
+    // --- Función auxiliar showScreen (MODIFICADA) ---
+    function showScreen(screenName) {
+        Object.values(screens).forEach(s => s.classList.remove('active'));
+        if (screens[screenName]) {
+            screens[screenName].classList.add('active');
+        }
+
+        // Lógica centralizada para mostrar/ocultar el botón
+        if (screenName === 'menu') {
+            offlineModeBtn.style.display = 'block';
+        } else {
+            offlineModeBtn.style.display = 'none';
+        }
+    }
+
     // --- Eventos de Botones y Formularios (Modo Online) ---
     createRoomBtn.addEventListener('click', () => {
         const playerName = playerNameInput.value;
@@ -501,14 +516,12 @@ document.addEventListener('DOMContentLoaded', () => {
     
     offlineModeBtn.addEventListener('click', () => {
         showScreen('offlineSetup');
-        offlineModeBtn.style.display = 'none';
         generatePlayerNameInputs(parseInt(offlinePlayerCountSelect.value, 10));
         updateOfflineOptionsUI();
     });
 
     backToMenuBtn.addEventListener('click', () => {
         showScreen('menu');
-        offlineModeBtn.style.display = 'block';
     });
 
     offlinePlayerCountSelect.addEventListener('change', () => {
@@ -668,7 +681,6 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             alert('Todos los roles han sido asignados. ¡Que comience el juego!');
             showScreen('menu');
-            offlineModeBtn.style.display = 'block';
         }
     });
 
@@ -721,12 +733,7 @@ document.addEventListener('DOMContentLoaded', () => {
         offlineRoleInfo.innerHTML = roleHTML;
     }
 
-    // --- Funciones auxiliares y de inicialización ---
-    function showScreen(screenName) {
-        Object.values(screens).forEach(s => s.classList.remove('active'));
-        if (screens[screenName]) screens[screenName].classList.add('active');
-    }
-
+    // --- Funciones auxiliares ---
     function showError(message) {
         errorModalContainer.querySelector('.error-modal').innerHTML = `<i class="fas fa-exclamation-triangle"></i> ${message}`;
         errorModalContainer.style.display = 'flex';
