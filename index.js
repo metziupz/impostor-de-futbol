@@ -342,6 +342,40 @@ const characterData = [
     { name: 'Gustavo Gómez', club: 'Palmeiras', team: 'Paraguay', position: 'Defensa central' }
 ];
 
+// --- NUEVA LISTA DE CLUBES ---
+const clubData = [
+    { name: 'Real Madrid', country: 'España', type: 'Club' },
+    { name: 'FC Barcelona', country: 'España', type: 'Club' },
+    { name: 'Atlético de Madrid', country: 'España', type: 'Club' },
+    { name: 'Sevilla', country: 'España', type: 'Club' },
+    { name: 'Manchester United', country: 'Inglaterra', type: 'Club' },
+    { name: 'Manchester City', country: 'Inglaterra', type: 'Club' },
+    { name: 'Liverpool', country: 'Inglaterra', type: 'Club' },
+    { name: 'Chelsea', country: 'Inglaterra', type: 'Club' },
+    { name: 'Arsenal', country: 'Inglaterra', type: 'Club' },
+    { name: 'Tottenham Hotspur', country: 'Inglaterra', type: 'Club' },
+    { name: 'Bayern Múnich', country: 'Alemania', type: 'Club' },
+    { name: 'Borussia Dortmund', country: 'Alemania', type: 'Club' },
+    { name: 'RB Leipzig', country: 'Alemania', type: 'Club' },
+    { name: 'Juventus', country: 'Italia', type: 'Club' },
+    { name: 'Inter de Milán', country: 'Italia', type: 'Club' },
+    { name: 'AC Milan', country: 'Italia', type: 'Club' },
+    { name: 'Napoli', country: 'Italia', type: 'Club' },
+    { name: 'AS Roma', country: 'Italia', type: 'Club' },
+    { name: 'Paris Saint-Germain', country: 'Francia', type: 'Club' },
+    { name: 'Olympique de Lyon', country: 'Francia', type: 'Club' },
+    { name: 'Olympique de Marsella', country: 'Francia', type: 'Club' },
+    { name: 'Ajax', country: 'Países Bajos', type: 'Club' },
+    { name: 'PSV Eindhoven', country: 'Países Bajos', type: 'Club' },
+    { name: 'Porto', country: 'Portugal', type: 'Club' },
+    { name: 'Benfica', country: 'Portugal', type: 'Club' },
+    { name: 'Sporting CP', country: 'Portugal', type: 'Club' },
+    { name: 'Boca Juniors', country: 'Argentina', type: 'Club' },
+    { name: 'River Plate', country: 'Argentina', type: 'Club' },
+    { name: 'Flamengo', country: 'Brasil', type: 'Club' },
+    { name: 'Palmeiras', country: 'Brasil', type: 'Club' },
+];
+
 app.use(express.static(__dirname));
 
 const rooms = {};
@@ -764,3 +798,4 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`Servidor escuchando en el puerto ${PORT}`);
 });
+
